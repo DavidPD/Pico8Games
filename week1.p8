@@ -4,30 +4,26 @@ __lua__
 
 t = 0
 
-player = {
-  x = 40, y = 30,
-  walking = true,
-  dir = 1,
-  frame = 1,
+player_type = {
   anim_frame_delay = 3,
   air_spr={2,3},
   stand_spr=1,
   walk_anim = {1,2,1,3},
   walk_speed = 2, walk_accel = 0.3,
-  vx = 0, vy = 0,
-  is_grounded = false,
 
-  last_shot = 0,
-  dir_y = 0,
+  init = function(self)
+    self.last_shot = 0
+    self.dir_y = 0
+  end,
 
-  shoot = function()
-    if t - player.last_shot > 3 then
-      player.last_shot = t
+  shoot = function(self)
+    if t - self.last_shot > 3 then
+      self.last_shot = t
       add(bullets, {
-        x = player.x + player.dir * 2, 
-        y = player.y + 1, 
-        dir_x = player.dir + player.dir_y * player.dir,
-        dir_y = player.dir_y,
+        x = self.x + self.dir * 2, 
+        y = self.y + 1, 
+        dir_x = self.dir + self.dir_y * self.dir,
+        dir_y = self.dir_y,
         lifetime = 24
       })
       sfx(0)
@@ -44,10 +40,26 @@ player = {
   end
 }
 
-entities = {player}
+entities = {}
 bullets = {}
 
+function entity(type, x, y)
+  e = {
+    type = type,
+    x = x, y = y,
+    vx = 0, vy = 0,
+    walking = false,
+    dir = 1,
+    frame = 1,
+    is_grounded = false,
+  }
+  if type.init != nil then type.init(e) end
+  return e
+end
+
 function _init()
+  player = entity(player_type, 40, 30)
+  add(entities, player)
 end
 
 function _update()
@@ -79,10 +91,16 @@ function _update()
   end
 
   if btn(5) then
-    player.shoot()
+    player.type.shoot(player)
   end
 
-  update(player)
+  for e in all(entities) do
+    if e.type.update != nil then
+      e.type.update(e)
+    else
+      update(e)
+    end
+  end
 
   for b in all(bullets) do
     update_bullet(b)
@@ -102,35 +120,35 @@ function _draw()
   end
 end
 
-function update(entity)
+function update(e)
   printh(#bullets)
-  if entity.walking then
-    entity.vx = clamp(entity.vx + entity.walk_accel * entity.dir, -entity.walk_speed, entity.walk_speed)
+  if e.walking then
+    e.vx = clamp(e.vx + e.type.walk_accel * e.dir, -e.type.walk_speed, e.type.walk_speed)
   else
-    entity.vx *= 0.8
-    if abs(entity.vx) < 1 then entity.vx = 0 end
+    e.vx *= 0.8
+    if abs(e.vx) < 1 then e.vx = 0 end
   end
-  entity.x += entity.vx
-  if check_map_collision(entity) then
+  e.x += e.vx
+  if check_map_collision(e) then
     repeat
-      entity.x -= sign(entity.vx)
-    until not check_map_collision(entity)
-    entity.vx = 0
+      e.x -= sign(e.vx)
+    until not check_map_collision(e)
+    e.vx = 0
   end
 
-  entity.y += entity.vy
-  if check_map_collision(entity) then
+  e.y += e.vy
+  if check_map_collision(e) then
     repeat
-      entity.y -= sign(entity.vy)
-    until not check_map_collision(entity)
-    entity.is_grounded = entity.vy > 0
-    entity.vy = 0
+      e.y -= sign(e.vy)
+    until not check_map_collision(e)
+    e.is_grounded = e.vy > 0
+    e.vy = 0
   end
 
-  entity.vy = clamp(entity.vy + 0.3, -4, 5)
+  e.vy = clamp(e.vy + 0.3, -4, 5)
 
-  if t % entity.anim_frame_delay == 0 and entity.walking then
-    entity.frame = (entity.frame + 1) % #entity.walk_anim 
+  if t % e.type.anim_frame_delay == 0 and e.walking then
+    e.frame = (e.frame + 1) % #e.type.walk_anim 
   end
 end
 
@@ -141,32 +159,32 @@ function update_bullet(bullet)
   if bullet.lifetime <= 0 then del(bullets, bullet) end
 end
 
-function draw_entity(entity)
-  if not entity.is_grounded then
+function draw_entity(e)
+  if not e.is_grounded then
     local air_spr
-    if entity.vy < 0 then 
-      air_spr = entity.air_spr[1]
+    if e.vy < 0 then 
+      air_spr = e.type.air_spr[1]
     else
-      air_spr = entity.air_spr[2] 
+      air_spr = e.type.air_spr[2] 
     end
-    spr(air_spr, entity.x, entity.y, 1, 1, entity.dir < 0)
-  elseif entity.walking then
-    spr(entity.walk_anim[entity.frame + 1], entity.x, entity.y, 1,1, entity.dir < 0)
+    spr(air_spr, e.x, e.y, 1, 1, e.dir < 0)
+  elseif e.walking then
+    spr(e.type.walk_anim[e.frame + 1], e.x, e.y, 1,1, e.dir < 0)
   else
-    spr(entity.stand_spr, entity.x, entity.y, 1, 1, entity.dir < 0)
+    spr(e.type.stand_spr, e.x, e.y, 1, 1, e.dir < 0)
   end
-  if entity.draw != nil then
-    entity.draw(entity)
+  if e.type.draw != nil then
+    e.type.draw(e)
   end
 end
 
-function check_map_collision(entity, f)
+function check_map_collision(e, f)
   f = f or 0
   local is_solid = false
-  is_solid = solid(entity.x / 8, entity.y / 8, f)
-  is_solid = (is_solid or solid(entity.x / 8, (entity.y + 7) / 8, f))
-  is_solid = (is_solid or solid((entity.x + 7) / 8, (entity.y + 7) / 8, f))
-  is_solid = (is_solid or solid((entity.x + 7) / 8, entity.y / 8, f))
+  is_solid = solid(e.x / 8, e.y / 8, f)
+  is_solid = (is_solid or solid(e.x / 8, (e.y + 7) / 8, f))
+  is_solid = (is_solid or solid((e.x + 7) / 8, (e.y + 7) / 8, f))
+  is_solid = (is_solid or solid((e.x + 7) / 8, e.y / 8, f))
   return is_solid
 end
 
