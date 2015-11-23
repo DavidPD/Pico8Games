@@ -71,9 +71,6 @@ function _draw()
       spr(1, s.x * 8, s.y * 8)
     end
   end
-  print(mouse.x, 0, 0, 2)
-  print("^", 0, 0, 2)
-  print(mouse.y, 0, 0, 2)
   spr(2, mouse.x * 8, mouse.y * 8)
 end
 
