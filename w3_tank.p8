@@ -5,18 +5,49 @@ __lua__
 t = 0 --time
 
 player_type = {
+  anim_frame_delay = 3,
+  move_anim = {1,3},
   init = function(self)
     self.angle = 0
   end,
 	draw = function(self)
-    spr(1, self.x, self.y, 2, 1)
+    frame = 1
+    if self.moving then
+      frame = self.type.move_anim[self.frame + 1]
+    end
+    spr(frame, self.x, self.y, 2, 1)
     local base_x = self.x + 8
     local base_y = self.y + 1
 
     local tip_x = cos(self.angle) * 5 + base_x
     local tip_y = sin(self.angle) * 5 + base_y
 
-    line(base_x, base_y, tip_x, tip_y, 13) 
+    line(base_x, base_y, tip_x, tip_y, 13)
+  end,
+  shoot = function(self)
+    local vx = cos(self.angle) * 2
+    local vy = sin(self.angle) * 2
+
+    bullet = make_entity(bullet_type, self.x + 4, self.y - 3)
+    bullet.vx = vx
+    bullet.vy = vy
+    bullet.x += vx * 2
+    bullet.y += vy * 2
+    add(entities, bullet)
+  end
+}
+
+bullet_type = {
+  update = function(self)
+    self.x += self.vx
+    self.y += self.vy
+
+    if not range(self.x, -16, 128) or not range(self.y, -16, 128) then
+      del(entities, self)
+    end
+  end,
+  draw = function(self)
+    spr(20, self.x, self.y)
   end
 }
 
@@ -28,10 +59,9 @@ function make_entity(type, x, y)
     type = type,
     x = x, y = y,
     vx = 0, vy = 0,
-    walking = false,
+    moving = false,
     dir = 1,
     frame = 1,
-    is_grounded = false,
   }
   if type.init != nil then type.init(e) end
   return e
@@ -43,8 +73,9 @@ function _init()
 end
 
 function _update()
-
+  t += 1
   if btn(4) then
+    player.moving = false
     if btn(0) and player.angle < 0.5 then
       player.angle += 0.01
     elseif btn(1) and player.angle > 0 then
@@ -52,28 +83,48 @@ function _update()
     end
   else
     if btn(0) then
+      player.moving = true
       player.x -= 1
     elseif btn(1) then
+      player.moving = true
       player.x += 1
+    else
+      player.moving = false
     end
+  end
+
+  if btnp(5) then
+    player.type.shoot(player)
   end
 
   for e in all(entities) do
     if e.type.update != nil then
       e.type.update(e)
+    else
+      update_entity(e)
     end
+  end
+end
+
+function update_entity(e)
+  if e.moving and t % e.type.anim_frame_delay == 0 then
+    e.frame = (e.frame + 1) % #e.type.move_anim
   end
 end
 
 function _draw()
   cls()
   map(0, 0, 0, 0, 16, 16)
-  print(player.angle)
+  print(player.frame)
   for e in all(entities) do
     if e.type.draw != nil then
       e.type.draw(e)
     end
   end
+end
+
+function range(n, min, max)
+  return (n <= max and n >= min)
 end
 
 __gfx__
