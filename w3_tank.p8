@@ -28,7 +28,7 @@ player_type = {
     local vx = cos(self.angle)
     local vy = sin(self.angle)
 
-    bullet = make_entity(bullet_type, self.x + 4, self.y - 3)
+    bullet = make_entity(bullet_type, self.x + 8, self.y)
     bullet.vx = vx * 3.7
     bullet.vy = vy * 3.7
     bullet.x += vx * 4
@@ -38,41 +38,73 @@ player_type = {
 }
 
 bullet_type = {
+  width = 2, height = 2,
+  frames = {20,22,23,24},
   init = function(self)
     self.time_since_death = 0
     self.alive = true
-    self.frame = 20
+    self.frame = 0
   end,
   update = function(self)
     if self.alive then
       self.x += self.vx
       self.y += self.vy
 
-      if not range(self.x, -16, 128) or not range(self.y, -16, 128) then
+      if not range(self.x, -16, 128) then
         del(entities, self)
       end
 
-      if self.y > 107 then
+      local collision = false
+
+      for e in all(entities) do
+        if e.type == helicopter_type then
+          if is_entity_collision(self, e) then
+            collision = true
+            del(entities, e)
+          end
+        end
+      end
+
+      if collision or self.y > 110 then
         self.alive = false
+        self.frame += 1
       end
 
       self.vy += 0.084
     else
       self.time_since_death += 1
 
-      if self.time_since_death < 2 then
-        self.frame = 22
-      elseif self.time_since_death < 4 then
-        self.frame = 23
-      elseif self.time_since_death < 6 then
-        self.frame = 24
-      elseif self.time_since_death < 8 then
+      if self.time_since_death > 8 then
         del(entities, self)
+      elseif self.time_since_death % 2 == 0 then
+        self.frame += 1
       end
     end
   end,
   draw = function(self)
-    spr(self.frame, self.x, self.y)
+    if self.alive then
+      spr(self.type.frames[self.frame + 1], self.x, self.y)
+    else
+      -- hack...
+      spr(self.type.frames[self.frame + 1], self.x - 4, self.y - 4)
+    end
+  end
+}
+
+helicopter_type = {
+  width = 16, height = 8,
+  move_anim = {7,5},
+  anim_frame_delay = 2,
+  init = function(self)
+    self.moving = true
+  end,
+  draw = function(self)
+    spr(self.type.move_anim[self.frame + 1], self.x, self.y, 2, 1, self.dir == -1)
+  end,
+  update = function(self)
+    self.dir = sign(player.x - self.x)
+    self.vx = clamp(self.vx + self.dir * 0.03, -0.6, 0.6)
+    update_entity(self)
   end
 }
 
@@ -95,6 +127,8 @@ end
 function _init()
   player = make_entity(player_type, 0, 105)
   add(entities, player)
+
+  add(entities, make_entity(helicopter_type, 30, 30))
 end
 
 function _update()
@@ -132,8 +166,12 @@ function _update()
 end
 
 function update_entity(e)
-  if e.moving and t % e.type.anim_frame_delay == 0 then
-    e.frame = (e.frame + 1) % #e.type.move_anim
+  if e.moving then
+    if t % e.type.anim_frame_delay == 0 then
+      e.frame = (e.frame + 1) % #e.type.move_anim
+    end
+
+    e.x += e.vx
   end
 end
 
@@ -148,9 +186,33 @@ function _draw()
   end
 end
 
+function is_entity_collision(e1, e2)
+  local x_overlap = range(e1.x, e2.x, e2.x + e2.type.width) or
+                    range(e2.x, e1.x, e1.x + e1.type.width);
+
+  local y_overlap = range(e1.y, e2.y, e2.y + e2.type.height) or
+                    range(e2.y, e1.y, e1.y + e1.type.height);
+
+  return x_overlap and y_overlap;
+end
+
 function range(n, min, max)
   return (n <= max and n >= min)
 end
+
+function sign(n)
+  if     n > 0 then return 1
+  elseif n < 0 then return -1
+  else   return 0
+  end
+end
+
+function clamp(n, min, max)
+  if n < min then return min end
+  if n > max then return max end
+  return n
+end
+
 
 __gfx__
 0000000000000033300000000000003330000000000000000dddd000000000dddddddddd005aa5000000000000000000000099999999000000000dddddd00000
@@ -161,11 +223,11 @@ __gfx__
 0000000051222122212221505112111211121150600060111111110000600011111111000598895000009aaaaaa90000009a77777777a9000d997d0000d799d0
 0000000005121112111215000521212121212500000000000d000d0d000000000d000d0d005995000009a777777a9000009a77777777a9000d99d000000d99d0
 0000000000555555555550000055555555555000000000ddddddddd0000000ddddddddd0000550000009a777777a9000009a77777777a90000d9d008800d9d00
-00005555555500000000505500555000000000000000000000000000000000000008800000000000000000000000000000000000000000000000000000000000
-0055dd8d9ddd55000055000000000000000000000000000000000000008998000800008000000000000000000000000000000000000000000000000000000000
+00005555555500000000505500555000dd0000000000000000000000000000000008800000000000000000000000000000000000000000000000000000000000
+0055dd8d9ddd55000055000000000000dd0000000000000000000000008998000800008000000000000000000000000000000000000000000000000000000000
 055d89dddd89d55005000000000000500000000000000000000aa000089aa9800000000000000000000000000000000000000000000000000000000000000000
-55dd55000055dd500000000000000050000dd0000005050000a77a0009a77a908000000800000000000000000000000000000000000000000000000000000000
-5dd50000000058d50000000000000005000dd0000000500000a77a0009a77a908000000800000000000000000000000000000000000000000000000000000000
+55dd55000055dd500000000000000050000000000005050000a77a0009a77a908000000800000000000000000000000000000000000000000000000000000000
+5dd50000000058d50000000000000005000000000000500000a77a0009a77a908000000800000000000000000000000000000000000000000000000000000000
 58d0000000000dd550000000000000050000000000050500000aa000089aa9800000000000000000000000000000000000000000000000000000000000000000
 5d000000900000d55000000000000005000000000000000000000000008998000800008000000000000000000000000000000000000000000000000000000000
 05000090090000500500000000000050000000000000000000000000000000000008800000000000000000000000000000000000000000000000000000000000
