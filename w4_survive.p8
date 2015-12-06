@@ -2,8 +2,14 @@ pico-8 cartridge // http://www.pico-8.com
 version 5
 __lua__
 
+hour = 0 -- 4 hours per day
+day = 0 -- 4 days per season
+season = 0 -- 0 = spring 1 = winter
+
+menu_open = false
+
 player = {
-  x = 1, y = 1,
+  pos = {x = 1, y = 1},
   health = 5,
   belly = 3,
   wood = 0,
@@ -11,10 +17,47 @@ player = {
   cold = 0
 }
 
+actions = {
+  [0] = "move left",
+  [1] = "move right",
+  [2] = "move up",
+  [3] = "move down",
+  [4] = "chop wood"
+}
+
 function _draw()
   cls()
+  camera()
   draw_hud()
   map(0,0,0,8,16,14)
+  camera(0, -8)
+  draw_player()
+  if menu_open then draw_menu() end
+end
+
+function _update()
+  old_pos = clone(player.pos)
+
+  if     btnp(0) then process_turn(0)
+  elseif btnp(1) then process_turn(1)
+  elseif btnp(2) then process_turn(2)
+  elseif btnp(3) then process_turn(3)
+  end
+
+  tile = mget(player.pos.x, player.pos.y)
+  if fget(tile, 0) then player.pos = old_pos end
+end
+
+function process_turn(action)
+  if     action = 0 then player.pos.x -= 1
+  elseif action = 1 then player.pos.x += 1
+  elseif action = 2 then player.pos.y -= 1
+  elseif action = 3 then player.pos.y += 1
+  end
+end
+
+function draw_player()
+  spr(1, player.pos.x * 8, player.pos.y * 8)
 end
 
 function draw_hud()
@@ -35,6 +78,10 @@ function draw_hud()
   end
 end
 
+function draw_menu()
+  
+end
+
 function winter_pal()
   pal(3,7)
   pal(11,6)
@@ -42,7 +89,12 @@ function winter_pal()
   pal(12, 13)
 end
 
-function _update()
+function clone(i)
+  c = {}
+  for k, v in pairs(i) do
+    c[k] = v
+  end
+  return c
 end
 
 __gfx__
