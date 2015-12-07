@@ -6,13 +6,13 @@ hour = 0 -- 4 hours per day
 day = 0 -- 4 days per season
 is_winter = false -- 0 = spring 1 = winter
 
-menu_open = true
+menu_open = false
 cursor = 1
 
 player = {
   pos = {x = 1, y = 1},
   health = 5,
-  belly = 3,
+  belly = 5,
   wood = 0,
   food = 0,
   cold = 0
@@ -24,7 +24,10 @@ actions = {
   [2] = "move up",
   [3] = "move down",
   [4] = "chop wood",
-  [5] = "cancel"
+  [5] = "cancel",
+  [6] = "hunt",
+  [7] = "build fire",
+  [8] = "eat"
 }
 
 tree_types = {
@@ -34,6 +37,7 @@ tree_types = {
 }
 
 chopped_trees = {}
+fires = {}
 
 function _draw()
   cls()
@@ -50,8 +54,6 @@ function _draw()
 end
 
 function _update()
-  old_pos = clone(player.pos)
-
   if not menu_open then
     if     btnp(0) then process_turn(0)
     elseif btnp(1) then process_turn(1)
@@ -70,8 +72,6 @@ function _update()
     end
   end
 
-  tile = mget(player.pos.x, player.pos.y)
-  if fget(tile, 0) then player.pos = old_pos end
 end
 
 function close_menu()
@@ -80,6 +80,7 @@ function close_menu()
 end
 
 function process_turn(action)
+  old_pos = clone(player.pos)
   if     action == 0 and player.pos.x > 0 then player.pos.x -= 1
   elseif action == 1 and player.pos.x < 15 then player.pos.x += 1
   elseif action == 2 then player.pos.y -= 1
@@ -87,8 +88,25 @@ function process_turn(action)
   elseif action == 4 then
     pos = clone(player.pos)
     tile = mget(pos.x, pos.y)
-    add(chopped_trees, {pos = pos, tile = tile, time = 15})
+    add(chopped_trees, {pos = pos, tile = tile, time = 23})
     mset(pos.x, pos.y, tree_types[tile])
+    player.wood += 1
+  elseif action == 6 then
+    if is_winter then
+      player.food += 1
+    else
+      player.food += 2
+      player.belly += 1
+    end
+  elseif action == 8 then
+    player.belly += 4
+    player.food -= 1
+  end
+
+  tile = mget(player.pos.x, player.pos.y)
+  if fget(tile, 0) then 
+    player.pos = old_pos
+    return
   end
 
   hour += 1
@@ -103,8 +121,24 @@ function process_turn(action)
 
   for tree in all(chopped_trees) do
     tree.time -= 1
-    if tree.time == 0 then mset(tree.pos.x, tree.pos.y, tree.tile) end
+    if tree.time == 0 then 
+      mset(tree.pos.x, tree.pos.y, tree.tile)
+      del(chopped_trees, tree)
+    end
   end
+
+  for fire in all(fires) do
+    fire.time -= 1
+    if fire.time == 0 then 
+      del(fires, fire)
+    end
+  end
+
+  if player.belly == 0 then player.health -= 1 end
+
+  if player.belly > 0 then player.belly -= 1 end
+
+  if player.belly > 5 then player.belly = 5 end
 
 end
 
@@ -128,6 +162,13 @@ function draw_hud()
     end
     spr(s, i * 8 + i + 84)
   end
+
+  spr(36, 0, 120)
+  spr(52, 30, 120)
+  color(13)
+  print("=" .. player.food, 10, 122, 13)
+  print("=" .. player.wood, 40, 122, 13)
+  color()
 end
 
 function draw_menu()
@@ -151,7 +192,12 @@ function get_available_actions()
   available_actions = {}
   tile = mget(player.pos.x, player.pos.y)
   if (fget(tile, 3)) then add(available_actions, 4) end -- chop wood
+  if player.belly < 5 and player.food > 0 then add(available_actions, 8) end -- eat
+
+  add(available_actions, 6) -- hunt
+  if player.wood > 2 then add(available_actions, 7) end -- build fire
   add(available_actions, 5) -- cancel
+
   return available_actions
 end
 
