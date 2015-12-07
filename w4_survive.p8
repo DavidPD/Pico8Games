@@ -4,9 +4,10 @@ __lua__
 
 hour = 0 -- 4 hours per day
 day = 0 -- 4 days per season
-season = 0 -- 0 = spring 1 = winter
+is_winter = false -- 0 = spring 1 = winter
 
-menu_open = false
+menu_open = true
+cursor = 1
 
 player = {
   pos = {x = 1, y = 1},
@@ -22,38 +23,89 @@ actions = {
   [1] = "move right",
   [2] = "move up",
   [3] = "move down",
-  [4] = "chop wood"
+  [4] = "chop wood",
+  [5] = "cancel"
 }
+
+tree_types = {
+  [64] = 75,
+  [65] = 74,
+  [71] = 78
+}
+
+chopped_trees = {}
 
 function _draw()
   cls()
-  camera()
   draw_hud()
+  if is_winter then
+    winter_pal()
+  end
   map(0,0,0,8,16,14)
   camera(0, -8)
+  pal()
   draw_player()
+  camera()
   if menu_open then draw_menu() end
 end
 
 function _update()
   old_pos = clone(player.pos)
 
-  if     btnp(0) then process_turn(0)
-  elseif btnp(1) then process_turn(1)
-  elseif btnp(2) then process_turn(2)
-  elseif btnp(3) then process_turn(3)
+  if not menu_open then
+    if     btnp(0) then process_turn(0)
+    elseif btnp(1) then process_turn(1)
+    elseif btnp(2) then process_turn(2)
+    elseif btnp(3) then process_turn(3)
+    elseif btnp(5) then menu_open = true
+    end
+  else
+    available_actions = get_available_actions()
+    if     btnp(2) and cursor > 1 then cursor -= 1
+    elseif btnp(3) and cursor < #available_actions then cursor += 1
+    elseif btnp(4) then close_menu()
+    elseif btnp(5) then 
+      process_turn(available_actions[cursor])
+      close_menu()
+    end
   end
 
   tile = mget(player.pos.x, player.pos.y)
   if fget(tile, 0) then player.pos = old_pos end
 end
 
+function close_menu()
+  menu_open = false
+  cursor = 1
+end
+
 function process_turn(action)
-  if     action = 0 then player.pos.x -= 1
-  elseif action = 1 then player.pos.x += 1
-  elseif action = 2 then player.pos.y -= 1
-  elseif action = 3 then player.pos.y += 1
+  if     action == 0 and player.pos.x > 0 then player.pos.x -= 1
+  elseif action == 1 and player.pos.x < 15 then player.pos.x += 1
+  elseif action == 2 then player.pos.y -= 1
+  elseif action == 3 then player.pos.y += 1
+  elseif action == 4 then
+    pos = clone(player.pos)
+    tile = mget(pos.x, pos.y)
+    add(chopped_trees, {pos = pos, tile = tile, time = 15})
+    mset(pos.x, pos.y, tree_types[tile])
   end
+
+  hour += 1
+  if hour > 3 then 
+    hour = 0
+    day += 1
+    if day > 3 then
+      day = 0
+      is_winter = not is_winter
+    end
+  end
+
+  for tree in all(chopped_trees) do
+    tree.time -= 1
+    if tree.time == 0 then mset(tree.pos.x, tree.pos.y, tree.tile) end
+  end
+
 end
 
 function draw_player()
@@ -79,7 +131,28 @@ function draw_hud()
 end
 
 function draw_menu()
-  
+
+  local available_actions = get_available_actions()
+    
+  rectfill(0, 119 - #available_actions * 8, 50, 119, 1)
+
+  local top_y = 120 - #available_actions * 8
+
+  for i,a in pairs(available_actions) do
+    color(3)
+    local y = top_y + (i - 1) * 8 + 1
+    if cursor == i then spr(38, 1, y - 1) end
+    print(actions[a], 7, y)
+  end
+  color()
+end
+
+function get_available_actions()
+  available_actions = {}
+  tile = mget(player.pos.x, player.pos.y)
+  if (fget(tile, 3)) then add(available_actions, 4) end -- chop wood
+  add(available_actions, 5) -- cancel
+  return available_actions
 end
 
 function winter_pal()
@@ -114,13 +187,13 @@ __gfx__
 00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-0000000000c77c0000d00d0000d00d00000444000005550000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000770770770d8dd8d00d0dd0d00044e8400050005000000000000000000000000000000000000000000000000000000000000000000000000000000000
-0000000007077070d888ee8dd000000d004487840050000500000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000c07cc70cd8888e8dd000000d0444e8e40500000500000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000c07cc70cd888888dd000000d044444440500000500000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000070770700d8888d00d0000d0044444400500055000000000000000000000000000000000000000000000000000000000000000000000000000000000
-000000007707707700d88d0000d00d00074440000555500000000000000000000000000000000000000000000000000000000000000000000000000000000000
+0000000000c77c0000d00d0000d00d00000444000005550090000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000770770770d8dd8d00d0dd0d00044e84000500050a9000000000000000000000000000000000000000000000000000000000000000000000000000000
+0000000007077070d888ee8dd000000d00448784005000050a900000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000c07cc70cd8888e8dd000000d0444e8e40500000500a90000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000c07cc70cd888888dd000000d04444444050000050a900000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000070770700d8888d00d0000d00444444005000550a9000000000000000000000000000000000000000000000000000000000000000000000000000000
+000000007707707700d88d0000d00d00074440000555500090000000000000000000000000000000000000000000000000000000000000000000000000000000
 0000000000c77c00000dd000000dd000700000005000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 000000000000a0000067770000044400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 000000000aa000a0067600600044e840000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
