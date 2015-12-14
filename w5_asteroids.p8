@@ -3,16 +3,23 @@ version 5
 __lua__
 
 game_over = false
+game_over_message = ""
 t = 0
+score = 0
+
+entities = {}
+player = {}
+enemy_count = 0
 
 player_type = {
+  is_enemy = false,
   hittable = false, -- only used by player bullets
   width = 8, height = 8,
   init = function(self)
     self.last_shot = 0
     self.last_shot_side = -1
-    self.health = 2
-    self.bomb_charge = 4
+    self.health = 5
+    self.bomb_charge = 2
   end,
   draw = function(self)
     if self.moving then
@@ -35,10 +42,14 @@ player_type = {
     sfx(0)
   end,
   bomb = function(self)
+    self.bomb_charge -= 1
+    sfx(3)
+    add(entities, make_entity(bomb_type, self.x + 1, self.y - 4))
   end
 }
 
 bullet_type = {
+  is_enemy = false,
   hittable = false,
   width = 1, height = 3,
   frames = {33, 9, 10, 11, 12, 13},
@@ -67,9 +78,6 @@ bullet_type = {
         if is_entity_collision(self, e) then
           collision = true
           e.health -= 1
-          if e.health <= 0 then 
-            del(entities, e)
-          end
         end
       end
     end
@@ -77,7 +85,7 @@ bullet_type = {
     if collision then
       self.alive = false
       self.frame += 1
-      sfx(3)
+      sfx(1)
     end
 
   end,
@@ -91,22 +99,111 @@ bullet_type = {
   end
 }
 
+bomb_type = {
+  is_enemy = false,
+  width = 4, height = 6,
+  update = function(self)
+    self.y -= 2
+
+    if self.y <= -3 then del(entities, self) end
+
+    local collision = false
+
+    for e in all(entities) do
+      if e.type.is_enemy then
+        if is_entity_collision(self, e) then
+          collision = true
+          if e.type == bad_bullet_type then
+            del(entities, e)
+          end
+          break
+        end
+      end
+    end
+
+    if collision then
+      explosion = make_entity(explosion_type, self.x - 7, self.y - 7)
+      explosion.depth = 1
+      add(entities, explosion)
+      del(entities, self)
+    end
+
+  end,
+  draw = function(self)
+    spr(34, self.x, self.y)
+  end
+}
+
+explosion_type = {
+  hittable = false,
+  is_enemy = false,
+  width = 16, height = 6,
+  init = function(self)
+    sfx(4)
+  end,
+  update = function(self)
+    self.frame += 1
+    if self.depth < 10 and self.frame == 5 then
+      explosion = make_entity(explosion_type, self.x + rnd(16) - 8, self.y + rnd(20) - 16)
+      explosion.depth = self.depth + 1
+      add(entities, explosion)
+    end
+    if self.frame > 8 then
+      del(entities, self)
+    end
+
+    for e in all(entities) do
+      if e.type.is_enemy then
+        if is_entity_collision(self, e) then
+          if e.type == bad_bullet_type then
+            del(entities, e)
+          else
+            e.health -= 1
+          end
+        end
+      end
+    end
+
+  end,
+  draw = function(self)
+    spr(64 + (self.frame - 1) * 2, self.x, self.y, 2, 2)
+  end
+}
+
 ship_type = {
+  is_enemy = true,
   hittable = true,
   width = 8, height = 8,
   init = function(self)
-    self.fire_rate = rnd(23) + 59
-    self.last_shot = t
-    self.health = 5
+    self.fire_rate = rnd(79) + 79
+    self.last_shot = t - self.fire_rate / 2
+    self.health = 3
   end,
   draw = function(self)
     spr(5, self.x, self.y)
   end,
   update = function(self)
-    self.y += 0.1
+    self.y += 0.4
+    if self.y > 130 then 
+      del(entities, self)
+      enemy_count -= 1 
+    end
+
     if t - self.last_shot > self.fire_rate then
       self.type.shoot(self)
       self.last_shot = t
+    end
+
+    if is_entity_collision(self, player) then
+      player.health -= 3
+      self.health = 0
+      game_over_message = {"way to go kamikaze, you're dead.", "at least you took one measly", "ship with you..."}
+    end
+
+    if self.health <= 0 then 
+      score += 1
+      del(entities, self)
+      enemy_count -= 1
     end
   end,
   shoot = function(self)
@@ -115,19 +212,24 @@ ship_type = {
 }
 
 bad_bullet_type = {
+  is_enemy = true, -- used by bomb
   hittable = false,
   width = 2, height = 3,
   update = function(self)
     self.y += 2
     if self.y >= 131 then del(entities, self) end
+
+    if is_entity_collision(self, player) then
+      player.health -= 1
+      sfx(2)
+      del(entities, self)
+      game_over_message = {"with that last hit you are", "blown into space dust"}
+    end
   end,
   draw = function(self)
     spr(22, self.x, self.y)
   end
 }
-
-entities = {}
-player = {}
 
 function make_entity(type, x, y)
   e = {
@@ -142,15 +244,76 @@ function make_entity(type, x, y)
   return e
 end
 
+wave_number = 0
+waves = {
+  {
+    {type = ship_type, count = 3},
+    {type = ship_type, count = 3},
+    {type = ship_type, count = 3}
+  },
+  {
+    {type = ship_type, count = 4},
+    {type = ship_type, count = 5},
+    {type = ship_type, count = 4}
+  },
+  {
+    {type = ship_type, count = 8},
+    {type = ship_type, count = 5},
+    {type = ship_type, count = 8}
+  },
+  {
+    {type = ship_type, count = 8},
+    {type = ship_type, count = 4},
+    {type = ship_type, count = 5},
+    {type = ship_type, count = 4},
+    {type = ship_type, count = 8}
+  },
+  {
+    {type = ship_type, count = 3},
+    {type = ship_type, count = 10},
+    {type = ship_type, count = 6},
+    {type = ship_type, count = 4},
+    {type = ship_type, count = 5},
+    {type = ship_type, count = 4},
+    {type = ship_type, count = 7}
+  },
+  {
+    {type = ship_type, count = 3},
+    {type = ship_type, count = 7},
+    {type = ship_type, count = 3},
+    {type = ship_type, count = 4},
+    {type = ship_type, count = 5},
+    {type = ship_type, count = 9},
+    {type = ship_type, count = 8},
+    {type = ship_type, count = 6}
+  },
+}
+
+
 function _init()
   player = make_entity(player_type, 0, 105)
   add(entities, player)
-
-  add(entities, make_entity(ship_type, 50, 5))
 end
 
 function _update()
   if game_over then return end
+
+  if enemy_count <= 0 then
+    if wave_number == #waves then
+      game_over = true
+      if score > 0 then
+        game_over_message = {"congratulations,you made it home",
+         "now hurry and do your laundry!",
+         "what, were you expecting a",
+         "medal or something?"}
+       else
+        game_over_message = {"achievement get:", "cheating pacifist!"}
+       end
+      return
+    end
+    wave_number += 1
+    start_wave(waves[wave_number])
+  end
 
   t += 1
   if btn(0) then
@@ -169,6 +332,10 @@ function _update()
     player.type.shoot(player)
   end
 
+  if btnp(4) and player.bomb_charge >= 1 then
+    player.type.bomb(player)
+  end
+
   for e in all(entities) do
     if e.type.update != nil then
       e.type.update(e)
@@ -176,11 +343,20 @@ function _update()
       -- update_entity(e)
     end
   end
+  if player.health <= 0 then game_over = true end
 end
 
 function _draw()
   cls()
   if game_over then
+    color(5)
+    for m in all(game_over_message) do
+      print(m)
+    end
+    if score > 0 then
+      print("you killed " .. score .. " aliens")
+      print("i hope you're proud of yourself.")
+    end
     return
   end
 
@@ -192,21 +368,31 @@ function _draw()
 
   -- draw the HUD
 
-  for h = 0,2 do
+  for h = 0,4 do
     if player.health > h then
-      spr(35, h * 8 + 1, 119)
+      spr(35, h * 9, 119)
     else
-      spr(36, h * 8 + 1, 119)
+      spr(36, h * 9, 119)
     end
   end
+
+  for b = 0,4 do
+    if player.bomb_charge > b then
+      spr(40, 111 + b * 9, 119)
+    else
+      spr(37, 111 + b * 9, 119)
+    end
+  end
+
 end
 
 function start_wave(wave_data)
   for row,wave_row in pairs(wave_data) do
-    y = row * 9
-    for i = 0,wave_row.count do
-      x = 120 / wave_row.count * i
+    y = row * 9 - (#wave_data + 2) * 8
+    for i = 0,wave_row.count - 1 do
+      x = 120 / (wave_row.count - 1) * i
       add(entities, make_entity(wave_row.type, x, y))
+      enemy_count += 1
     end
   end
 end
@@ -393,10 +579,10 @@ __map__
 0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 __sfx__
 000200002d0212a041270212207122001005010050100501005010050100501005010050100501005010050100501005010050100501005010050100501005010050100501005010050100501005010050100501
-001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+000100000e0501005012050140701e6001e6001e6001e6001e6001d6001d600046000460004600046000460004600046000460004600046000460004600036000260002600016000160000000000000000000000
+000300003167031620316203162030610306100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+000400000307005070070700a0700c070000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+0004000002770016501f6501f6501f6501d6401a64017620166100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
